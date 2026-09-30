@@ -553,12 +553,15 @@ function renderHistory() {
     return;
   }
 
-  state.history.forEach((week, i) => {
+  // Show in descending order: newest week first.
+  // Week numbers still reflect the actual stored position (1-based).
+  for (let i = state.history.length - 1; i >= 0; i--) {
+    const week = state.history[i];
     const block = document.createElement("div");
     block.className = "week-block";
     block.appendChild(renderGroupsHTML(week, `Week ${i + 1}`));
     el.appendChild(block);
-  });
+  }
 }
 
 function refreshAll() {
