@@ -20,12 +20,13 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const stateRef = ref(db, "state"); // one node holds everything
+const stateRef = ref(db, "state");
 
 // ====== State ======
 let state = {
   people: [],
-  history: []
+  history: [],
+  lastGenerationStart: -1   // index in history where the most recent generate batch begins
 };
 
 // ====== Sync status ======
@@ -51,9 +52,13 @@ function initFirebaseListeners() {
     if (data) {
       state.people = data.people || [];
       state.history = data.history || [];
+      state.lastGenerationStart = typeof data.lastGenerationStart === "number"
+        ? data.lastGenerationStart
+        : -1;
     } else {
       state.people = [];
       state.history = [];
+      state.lastGenerationStart = -1;
     }
     setSyncStatus("Connected — shared with everyone", true);
     refreshAll();
@@ -636,6 +641,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const weeks = generateWeeks(numWeeks, numGroups, weeksBack);
       renderPreview(weeks.length === 1 ? [weeks[0]] : weeks, numWeeks > 1);
 
+      // Remember where this batch begins so we can export it later
+      state.lastGenerationStart = state.history.length;
+
       state.history.push(...weeks);
       pushState();
       showNotification(`Saved ${numWeeks} week(s) to shared history.`);
@@ -646,6 +654,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("save-preview-btn").addEventListener("click", () => {
     if (!currentPreviewWeeks) return;
+
+    // Mark the start of this batch too, so "Export Latest Generation" works
+    state.lastGenerationStart = state.history.length;
+
     state.history.push(...currentPreviewWeeks);
     pushState();
     showNotification(`Saved ${currentPreviewWeeks.length} week(s) to shared history.`);
@@ -660,6 +672,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!state.history.length) return;
     if (confirm("Clear all history for everyone? This affects all users.")) {
       state.history = [];
+      state.lastGenerationStart = -1;
       pushState();
     }
   });
@@ -671,7 +684,15 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("No history to export.");
       return;
     }
-    exportGroupingsCSV([state.history[state.history.length - 1]], "latest-week");
+
+    // If we know where the most recent batch started, use that.
+    // Otherwise fall back to just the last week.
+    const start = (typeof state.lastGenerationStart === "number" && state.lastGenerationStart >= 0)
+      ? state.lastGenerationStart
+      : state.history.length - 1;
+
+    const latestBatch = state.history.slice(start);
+    exportGroupingsCSV(latestBatch, "latest-generation");
   });
 
   document.getElementById("export-all-csv-btn").addEventListener("click", () => {
