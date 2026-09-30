@@ -26,7 +26,8 @@ const stateRef = ref(db, "state");
 let state = {
   people: [],
   history: [],
-  lastGenerationStart: -1   // index in history where the most recent generate batch begins
+  lastGenerationStart: -1,   // index in history where the most recent generate batch begins
+  lastGenerationCount: 0     // how many weeks the most recent batch has
 };
 
 // ====== Sync status ======
@@ -55,10 +56,14 @@ function initFirebaseListeners() {
       state.lastGenerationStart = typeof data.lastGenerationStart === "number"
         ? data.lastGenerationStart
         : -1;
+      state.lastGenerationCount = typeof data.lastGenerationCount === "number"
+        ? data.lastGenerationCount
+        : 0;
     } else {
       state.people = [];
       state.history = [];
       state.lastGenerationStart = -1;
+      state.lastGenerationCount = 0;
     }
     setSyncStatus("Connected — shared with everyone", true);
     refreshAll();
@@ -641,8 +646,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const weeks = generateWeeks(numWeeks, numGroups, weeksBack);
       renderPreview(weeks.length === 1 ? [weeks[0]] : weeks, numWeeks > 1);
 
-      // Remember where this batch begins so we can export it later
+      // Remember where this batch begins and how many weeks it has,
+      // so "Export Latest Generation" exports exactly this batch.
       state.lastGenerationStart = state.history.length;
+      state.lastGenerationCount = weeks.length;
 
       state.history.push(...weeks);
       pushState();
@@ -655,8 +662,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("save-preview-btn").addEventListener("click", () => {
     if (!currentPreviewWeeks) return;
 
-    // Mark the start of this batch too, so "Export Latest Generation" works
+    // Mark the start and size of this batch too
     state.lastGenerationStart = state.history.length;
+    state.lastGenerationCount = currentPreviewWeeks.length;
 
     state.history.push(...currentPreviewWeeks);
     pushState();
@@ -673,6 +681,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (confirm("Clear all history for everyone? This affects all users.")) {
       state.history = [];
       state.lastGenerationStart = -1;
+      state.lastGenerationCount = 0;
       pushState();
     }
   });
@@ -685,14 +694,18 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // If we know where the most recent batch started, use that.
-    // Otherwise fall back to just the last week.
-    const start = (typeof state.lastGenerationStart === "number" && state.lastGenerationStart >= 0)
-      ? state.lastGenerationStart
-      : state.history.length - 1;
+    const start = state.lastGenerationStart;
+    const count = state.lastGenerationCount;
 
-    const latestBatch = state.history.slice(start);
-    exportGroupingsCSV(latestBatch, "latest-generation");
+    // If we have a valid batch recorded, slice exactly that batch.
+    if (start >= 0 && count > 0 && start + count <= state.history.length) {
+      const latestBatch = state.history.slice(start, start + count);
+      exportGroupingsCSV(latestBatch, "latest-generation");
+      return;
+    }
+
+    // No valid batch info — export the last week only as a fallback.
+    exportGroupingsCSV([state.history[state.history.length - 1]], "latest-generation");
   });
 
   document.getElementById("export-all-csv-btn").addEventListener("click", () => {
