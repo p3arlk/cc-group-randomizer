@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group Randomizer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Group Randomizer</h1>
+    <p class="subtitle">Randomize groups without repeating the same pairings</p>
+    <p id="sync-status" class="subtitle">Connecting to shared database...</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="people">People</button>
+    <button class="tab" data-tab="generate">Generate</button>
+    <button class="tab" data-tab="history">History</button>
+  </nav>
+
+  <!-- PEOPLE TAB -->
+  <section id="tab-people" class="tab-content active">
+    <div class="card">
+      <h2>Add People</h2>
+      <div class="input-row">
+        <input type="text" id="add-input" placeholder="Enter names separated by commas (e.g. Alice, Bob, Charlie)">
+        <button id="add-btn" class="primary">Add</button>
+      </div>
+      <p class="hint">Tip: You can paste a whole list at once, one per line or comma-separated.</p>
+    </div>
+
+    <div class="card">
+      <h2>Current People <span id="people-count" class="badge">0</span></h2>
+      <ul id="people-list" class="people-list"></ul>
+      <div class="button-row">
+        <button id="export-people-csv-btn" class="secondary small">Export People (CSV)</button>
+        <button id="import-people-csv-btn" class="secondary small">Import People (CSV)</button>
+        <input type="file" id="import-people-file" accept=".csv,text/csv" hidden>
+        <button id="clear-people-btn" class="danger small">Remove All</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- GENERATE TAB -->
+  <section id="tab-generate" class="tab-content">
+    <div class="card">
+      <h2>Generate Groups</h2>
+      <div class="form-grid">
+        <label>
+          Number of groups
+          <input type="number" id="num-groups" min="2" value="2">
+        </label>
+        <label>
+          Number of weeks
+          <input type="number" id="num-weeks" min="1" value="1">
+        </label>
+        <label>
+          Consider last N weeks (blank = all)
+          <input type="number" id="weeks-back" min="1" placeholder="all">
+        </label>
+      </div>
+      <div class="button-row">
+        <button id="preview-btn" class="secondary">Preview Groups</button>
+        <button id="generate-btn" class="primary">Generate &amp; Save</button>
+      </div>
+    </div>
+
+    <div id="preview-area" class="card hidden">
+      <h2 id="preview-title">Preview</h2>
+      <div id="groups-output"></div>
+      <div id="save-preview-row" class="button-row hidden">
+        <button id="export-preview-csv-btn" class="secondary">Export Preview (CSV)</button>
+        <button id="save-preview-btn" class="primary">Save to History</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- HISTORY TAB -->
+  <section id="tab-history" class="tab-content">
+    <div class="card">
+      <h2>Statistics</h2>
+      <div id="stats-output"></div>
+    </div>
+    <div class="card">
+      <h2>History <span id="history-count" class="badge">0</span> weeks</h2>
+      <div id="history-output"></div>
+      <div class="button-row">
+        <button id="export-latest-csv-btn" class="secondary small">Export Latest Week (CSV)</button>
+        <button id="export-all-csv-btn" class="secondary small">Export All Weeks (CSV)</button>
+        <button id="clear-history-btn" class="danger small">Clear All History</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script type="module" src="script.js"></script>
+</body>
+</html>
