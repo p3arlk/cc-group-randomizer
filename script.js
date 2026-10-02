@@ -33,6 +33,7 @@ const LS_TUTORIAL_SEEN = "groupRandomizerTutorialSeen_v1";
 // ====== Projects ======
 let projects = {};
 let activeProjectId = null;
+let currentPreviewWeeks = null;
 
 // ====== Utilities ======
 function generateId() {
@@ -321,6 +322,7 @@ function convertActiveProject() {
 function renderProjectBar() {
   const select = document.getElementById("project-select");
   const badge = document.getElementById("project-type-badge");
+  if (!select || !badge) return;
 
   const list = Object.values(projects).sort((a, b) => {
     if (a.type !== b.type) return a.type === "shared" ? -1 : 1;
@@ -573,7 +575,7 @@ function renderPeople() {
   const list = document.getElementById("people-list");
   const count = document.getElementById("people-count");
   const p = currentProject();
-  if (!p) return;
+  if (!p || !list || !count) return;
   count.textContent = p.people.length;
   if (!p.people.length) {
     list.innerHTML = '<li class="empty">No people yet. Add some above.</li>';
@@ -601,6 +603,7 @@ function renderPeople() {
 
 function updateGroupInputMax() {
   const input = document.getElementById("num-groups");
+  if (!input) return;
   const p = currentProject();
   const maxPeople = p ? p.people.length : 2;
   input.max = Math.max(2, maxPeople);
@@ -622,9 +625,9 @@ function renderGroupsHTML(groups, weekLabel) {
     title.textContent = `Group ${i + 1} (${group.length})`;
     box.appendChild(title);
     const ul = document.createElement("ul");
-    group.slice().sort((a, b) => a.localeCompare(b)).forEach(p => {
+    group.slice().sort((a, b) => a.localeCompare(b)).forEach(person => {
       const li = document.createElement("li");
-      li.textContent = p;
+      li.textContent = person;
       ul.appendChild(li);
     });
     box.appendChild(ul);
@@ -634,12 +637,11 @@ function renderGroupsHTML(groups, weekLabel) {
   return wrap;
 }
 
-let currentPreviewWeeks = null;
-
 function renderPreview(weeks, isMultiWeek) {
   const output = document.getElementById("groups-output");
   const area = document.getElementById("preview-area");
   const title = document.getElementById("preview-title");
+  if (!output || !area || !title) return;
 
   currentPreviewWeeks = weeks;
   output.innerHTML = "";
@@ -663,7 +665,7 @@ function renderPreview(weeks, isMultiWeek) {
 function renderStats() {
   const el = document.getElementById("stats-output");
   const p = currentProject();
-  if (!p) return;
+  if (!p || !el) return;
   el.innerHTML = "";
   if (!p.history.length) {
     el.innerHTML = '<p class="empty">No history yet.</p>';
@@ -703,7 +705,7 @@ function renderHistory() {
   const el = document.getElementById("history-output");
   const count = document.getElementById("history-count");
   const p = currentProject();
-  if (!p) return;
+  if (!p || !el || !count) return;
   count.textContent = p.history.length;
   el.innerHTML = "";
   if (!p.history.length) {
@@ -805,6 +807,7 @@ function showTutorialStep() {
   const step = TUTORIAL_STEPS[tutorialStep];
   const box = document.querySelector(".tutorial-box");
   const highlight = document.getElementById("tutorial-highlight");
+  if (!box || !highlight) return;
 
   document.getElementById("tutorial-step").textContent =
     `Step ${tutorialStep + 1} of ${TUTORIAL_STEPS.length}`;
@@ -889,8 +892,10 @@ document.addEventListener("DOMContentLoaded", () => {
     refreshCurrentProjectView();
     // Discard unsaved preview when switching projects
     currentPreviewWeeks = null;
-    document.getElementById("preview-area").classList.add("hidden");
-    document.getElementById("save-preview-btn").disabled = true;
+    const area = document.getElementById("preview-area");
+    if (area) area.classList.add("hidden");
+    const saveBtn = document.getElementById("save-preview-btn");
+    if (saveBtn) saveBtn.disabled = true;
   });
 
   // New project
@@ -960,7 +965,8 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const weeks = generateWeeksForProject(p, numWeeks, numGroups, weeksBack);
       renderPreview(weeks, numWeeks > 1);
-      document.getElementById("save-preview-btn").disabled = false;
+      const saveBtn = document.getElementById("save-preview-btn");
+      if (saveBtn) saveBtn.disabled = false;
     } catch (e) { alert(e.message); }
   });
 
@@ -975,10 +981,11 @@ document.addEventListener("DOMContentLoaded", () => {
     renderStats();
     renderHistory();
 
-    document.getElementById("save-preview-btn").disabled = true;
+    const saveBtn = document.getElementById("save-preview-btn");
+    if (saveBtn) saveBtn.disabled = true;
 
     const title = document.getElementById("preview-title");
-    title.textContent = title.textContent.replace(" — not saved yet", " — saved");
+    if (title) title.textContent = title.textContent.replace(" — not saved yet", " — saved");
 
     showNotification(`Saved ${currentPreviewWeeks.length} week(s) to history.`);
   });
