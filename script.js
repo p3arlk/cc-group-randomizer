@@ -640,7 +640,6 @@ function renderPreview(weeks, isMultiWeek) {
   const output = document.getElementById("groups-output");
   const area = document.getElementById("preview-area");
   const title = document.getElementById("preview-title");
-  const saveRow = document.getElementById("save-preview-row");
 
   currentPreviewWeeks = weeks;
   output.innerHTML = "";
@@ -658,7 +657,6 @@ function renderPreview(weeks, isMultiWeek) {
     title.textContent = "Generated Groups — not saved yet";
     output.appendChild(renderGroupsHTML(weeks[0], ""));
   }
-  saveRow.classList.remove("hidden");
   area.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -761,7 +759,7 @@ const TUTORIAL_STEPS = [
   },
   {
     title: "Generate, then Save",
-    text: "Click Generate Groups to see the random groupings. If you like them, click Save to History in the preview. Nothing is saved until you click Save.",
+    text: "Click Generate Groups to see the random groupings. If you like them, click Save. Nothing is saved until you click Save.",
     target: "#preview-btn",
     tab: "generate"
   },
@@ -889,6 +887,10 @@ document.addEventListener("DOMContentLoaded", () => {
     saveActiveProjectId(activeProjectId);
     renderProjectBar();
     refreshCurrentProjectView();
+    // Discard unsaved preview when switching projects
+    currentPreviewWeeks = null;
+    document.getElementById("preview-area").classList.add("hidden");
+    document.getElementById("save-preview-btn").disabled = true;
   });
 
   // New project
@@ -947,7 +949,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Generate Groups (replaces Preview)
+  // Generate Groups
   document.getElementById("preview-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p) return;
@@ -958,10 +960,11 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const weeks = generateWeeksForProject(p, numWeeks, numGroups, weeksBack);
       renderPreview(weeks, numWeeks > 1);
+      document.getElementById("save-preview-btn").disabled = false;
     } catch (e) { alert(e.message); }
   });
 
-  // Save to History (from preview)
+  // Save to History
   document.getElementById("save-preview-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !currentPreviewWeeks) return;
@@ -971,6 +974,12 @@ document.addEventListener("DOMContentLoaded", () => {
     saveCurrentProject();
     renderStats();
     renderHistory();
+
+    document.getElementById("save-preview-btn").disabled = true;
+
+    const title = document.getElementById("preview-title");
+    title.textContent = title.textContent.replace(" — not saved yet", " — saved");
+
     showNotification(`Saved ${currentPreviewWeeks.length} week(s) to history.`);
   });
 
