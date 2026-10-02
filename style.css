@@ -19,7 +19,7 @@ body {
 
 header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 header h1 {
@@ -31,6 +31,71 @@ header h1 {
   color: #666;
   font-size: 14px;
   margin-top: 4px;
+}
+
+/* ---- Project bar ---- */
+.project-bar {
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.project-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.project-bar-row + .project-bar-row {
+  margin-top: 8px;
+}
+
+.project-label {
+  font-size: 13px;
+  color: #555;
+  font-weight: 600;
+}
+
+.project-select {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d5dae2;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  min-width: 160px;
+}
+
+.project-select:focus {
+  outline: none;
+  border-color: #1a2b4a;
+}
+
+.project-badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.project-badge.shared {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.project-badge.personal {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.project-bar-actions {
+  justify-content: flex-end;
 }
 
 .tabs {
@@ -160,7 +225,7 @@ button.danger {
 button.small {
   padding: 7px 12px;
   font-size: 13px;
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .button-row {
