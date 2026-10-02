@@ -9,7 +9,10 @@
 <body>
 <div class="container">
   <header>
-    <h1>Group Randomizer</h1>
+    <div class="header-top">
+      <h1>Group Randomizer</h1>
+      <button id="help-btn" class="secondary small" title="Show tutorial">? Help</button>
+    </div>
     <p class="subtitle">Randomize groups without repeating the same pairings</p>
     <p id="sync-status" class="subtitle">Connecting to shared database...</p>
   </header>
@@ -113,6 +116,24 @@
       <div id="history-output"></div>
     </div>
   </section>
+</div>
+
+<!-- TUTORIAL OVERLAY -->
+<div id="tutorial-overlay" class="tutorial-overlay hidden">
+  <div class="tutorial-backdrop"></div>
+  <div id="tutorial-highlight" class="tutorial-highlight hidden"></div>
+  <div class="tutorial-box">
+    <div class="tutorial-header">
+      <span id="tutorial-step">Step 1 of 8</span>
+      <button id="tutorial-skip" class="tutorial-skip" title="Skip tutorial">×</button>
+    </div>
+    <h3 id="tutorial-title">Welcome</h3>
+    <p id="tutorial-text">Let's take a quick tour of the app.</p>
+    <div class="tutorial-footer">
+      <button id="tutorial-back" class="secondary small">Back</button>
+      <button id="tutorial-next" class="primary small">Next</button>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="script.js"></script>
