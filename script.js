@@ -5,7 +5,6 @@ import {
   ref,
   onValue,
   set,
-  update,
   remove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -23,26 +22,17 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const projectsRef = ref(db, "projects");
-const migrationRef = ref(db, "state"); // old location, for one-time migration
+const migrationRef = ref(db, "state");
 
 // ====== Local storage keys ======
 const LS_PERSONAL = "groupRandomizerPersonalProjects";
 const LS_ACTIVE = "groupRandomizerActiveProjectId";
 const LS_MIGRATED = "groupRandomizerMigrated_v1";
+const LS_TUTORIAL_SEEN = "groupRandomizerTutorialSeen_v1";
 
-// ====== Project shape ======
-// {
-//   id, name, type: "shared" | "personal",
-//   people: [],
-//   history: [],
-//   lastGenerationStart: -1,
-//   lastGenerationCount: 0
-// }
-
-// In-memory copy of projects (merged view from Firebase + localStorage)
-let projects = {};        // id -> project object
+// ====== Projects ======
+let projects = {};
 let activeProjectId = null;
-let firebaseReady = false;
 
 // ====== Utilities ======
 function generateId() {
@@ -69,7 +59,7 @@ function showNotification(msg) {
   el._t = setTimeout(() => el.classList.remove("show"), 2200);
 }
 
-// ====== Personal project storage ======
+// ====== Personal storage ======
 function loadPersonalProjects() {
   try {
     const raw = localStorage.getItem(LS_PERSONAL);
@@ -80,40 +70,33 @@ function loadPersonalProjects() {
   }
 }
 
-function savePersonalProjects(personalProjects) {
+function savePersonalProjects(all) {
   try {
-    localStorage.setItem(LS_PERSONAL, JSON.stringify(personalProjects));
+    localStorage.setItem(LS_PERSONAL, JSON.stringify(all));
   } catch (e) {
     console.error("Failed to save personal projects:", e);
     showNotification("Failed to save personal project (storage full?)");
   }
 }
 
-// ====== Active project ======
-function loadActiveProjectId() {
-  return localStorage.getItem(LS_ACTIVE);
-}
+function loadActiveProjectId() { return localStorage.getItem(LS_ACTIVE); }
 
 function saveActiveProjectId(id) {
   if (id) localStorage.setItem(LS_ACTIVE, id);
   else localStorage.removeItem(LS_ACTIVE);
 }
 
-// ====== Firebase: read projects ======
+// ====== Firebase read ======
 function initFirebaseListeners() {
   onValue(projectsRef, snapshot => {
     const data = snapshot.val() || {};
-
-    // Merge in shared projects (mark them as shared type)
-    // Keep any personal projects we already have in memory from localStorage
     const merged = {};
 
-    // First, start with personal
+    // Personal first
     for (const [id, p] of Object.entries(projects)) {
       if (p.type === "personal") merged[id] = p;
     }
-
-    // Then add shared from Firebase
+    // Then shared from Firebase
     for (const [id, p] of Object.entries(data)) {
       merged[id] = {
         id,
@@ -125,8 +108,7 @@ function initFirebaseListeners() {
         lastGenerationCount: typeof p.lastGenerationCount === "number" ? p.lastGenerationCount : 0
       };
     }
-
-    // Also include any personal projects that were loaded before Firebase
+    // Also merge in personal from localStorage
     const personal = loadPersonalProjects();
     for (const [id, p] of Object.entries(personal)) {
       merged[id] = {
@@ -141,19 +123,12 @@ function initFirebaseListeners() {
     }
 
     projects = merged;
-    firebaseReady = true;
-
-    // Ensure there is always at least one project
     ensureAtLeastOneProject();
 
-    // Make sure activeProjectId exists and points to a real project
     if (!activeProjectId || !projects[activeProjectId]) {
-      // Try saved from localStorage
       const saved = loadActiveProjectId();
-      if (saved && projects[saved]) {
-        activeProjectId = saved;
-      } else {
-        // Pick the first project alphabetically
+      if (saved && projects[saved]) activeProjectId = saved;
+      else {
         const ids = Object.keys(projects).sort((a, b) => projects[a].name.localeCompare(projects[b].name));
         activeProjectId = ids[0];
         saveActiveProjectId(activeProjectId);
@@ -171,23 +146,11 @@ function initFirebaseListeners() {
 
 function ensureAtLeastOneProject() {
   if (Object.keys(projects).length > 0) return;
-
-  // If we have old-style data at state/people & state/history, migrate it.
-  if (!localStorage.getItem(LS_MIGRATED)) {
-    // We'll try migration once. This runs after we check the old data path.
-    // (see migrateLegacyDataIfPresent below)
-  }
-
-  // Otherwise create a default shared project
   const id = generateId();
   const newProject = {
-    id,
-    type: "shared",
-    name: "Default",
-    people: [],
-    history: [],
-    lastGenerationStart: -1,
-    lastGenerationCount: 0
+    id, type: "shared", name: "Default",
+    people: [], history: [],
+    lastGenerationStart: -1, lastGenerationCount: 0
   };
   projects[id] = newProject;
   saveSharedProject(newProject);
@@ -196,9 +159,7 @@ function ensureAtLeastOneProject() {
 function migrateLegacyDataIfPresent(legacy) {
   const id = generateId();
   const newProject = {
-    id,
-    type: "shared",
-    name: "Default",
+    id, type: "shared", name: "Default",
     people: legacy.people || [],
     history: legacy.history || [],
     lastGenerationStart: typeof legacy.lastGenerationStart === "number" ? legacy.lastGenerationStart : -1,
@@ -206,28 +167,8 @@ function migrateLegacyDataIfPresent(legacy) {
   };
   projects[id] = newProject;
   saveSharedProject(newProject);
-  // Remove legacy node
   remove(migrationRef).catch(err => console.warn("Could not remove legacy node:", err));
   localStorage.setItem(LS_MIGRATED, "1");
-}
-
-function checkLegacyMigration() {
-  if (localStorage.getItem(LS_MIGRATED)) return Promise.resolve();
-  return new Promise(resolve => {
-    onValue(migrationRef, snapshot => {
-      const legacy = snapshot.val();
-      if (legacy && (legacy.people || legacy.history)) {
-        // We have old data — migrate it into a "Default" shared project
-        // But only if there are no shared projects yet
-        // (this gets called once, before we render)
-        if (!localStorage.getItem(LS_MIGRATED)) {
-          // Delay to let Firebase projects load; we'll do this check in the first projects snapshot
-          window.__pendingLegacyMigration = legacy;
-        }
-      }
-      resolve();
-    }, { onlyOnce: true });
-  });
 }
 
 // ====== Firebase writes ======
@@ -252,13 +193,11 @@ function deleteSharedProject(id) {
   });
 }
 
-// ====== Save current project ======
 function saveCurrentProject() {
   const project = projects[activeProjectId];
   if (!project) return;
-  if (project.type === "shared") {
-    saveSharedProject(project);
-  } else {
+  if (project.type === "shared") saveSharedProject(project);
+  else {
     const all = loadPersonalProjects();
     all[project.id] = project;
     savePersonalProjects(all);
@@ -269,20 +208,14 @@ function saveCurrentProject() {
 function createProject(name, type) {
   const id = generateId();
   const project = {
-    id,
-    type,
-    name,
-    people: [],
-    history: [],
-    lastGenerationStart: -1,
-    lastGenerationCount: 0
+    id, type, name,
+    people: [], history: [],
+    lastGenerationStart: -1, lastGenerationCount: 0
   };
-
   projects[id] = project;
 
-  if (type === "shared") {
-    saveSharedProject(project);
-  } else {
+  if (type === "shared") saveSharedProject(project);
+  else {
     const all = loadPersonalProjects();
     all[id] = project;
     savePersonalProjects(all);
@@ -314,10 +247,8 @@ function deleteActiveProject() {
 
   if (!confirm(confirmMsg)) return;
 
-  if (project.type === "shared") {
-    deleteSharedProject(project.id);
-    // Firebase listener will pick up the change; but optimistically remove from memory too
-  } else {
+  if (project.type === "shared") deleteSharedProject(project.id);
+  else {
     const all = loadPersonalProjects();
     delete all[project.id];
     savePersonalProjects(all);
@@ -325,18 +256,13 @@ function deleteActiveProject() {
 
   delete projects[project.id];
 
-  // If nothing left, create a new Default shared project
   if (Object.keys(projects).length === 0) {
-    // Wait a moment for Firebase listener, then fallback-create
     setTimeout(() => {
-      if (Object.keys(projects).length === 0) {
-        createProject("Default", "shared");
-      }
+      if (Object.keys(projects).length === 0) createProject("Default", "shared");
     }, 400);
     return;
   }
 
-  // Switch to another project
   const ids = Object.keys(projects).sort((a, b) => projects[a].name.localeCompare(projects[b].name));
   activeProjectId = ids[0];
   saveActiveProjectId(activeProjectId);
@@ -350,57 +276,42 @@ function convertActiveProject() {
   if (!project) return;
 
   if (project.type === "shared") {
-    // Convert to personal: copy data into localStorage, then remove from Firebase
     if (!confirm(`Convert "${project.name}" to a PERSONAL project?\n\nIt will be copied to this browser only and removed from the shared database for everyone else.`)) return;
-
     const newId = generateId();
     const personalCopy = {
-      id: newId,
-      type: "personal",
-      name: project.name + " (personal)",
+      id: newId, type: "personal", name: project.name + " (personal)",
       people: project.people.slice(),
       history: project.history.map(w => w.map(g => g.slice())),
       lastGenerationStart: project.lastGenerationStart,
       lastGenerationCount: project.lastGenerationCount
     };
-
     const all = loadPersonalProjects();
     all[newId] = personalCopy;
     savePersonalProjects(all);
     projects[newId] = personalCopy;
-
     deleteSharedProject(project.id);
     delete projects[project.id];
-
     activeProjectId = newId;
     saveActiveProjectId(newId);
     renderProjectBar();
     refreshCurrentProjectView();
     showNotification("Converted to personal");
   } else {
-    // Convert to shared
     if (!confirm(`Publish "${project.name}" to the SHARED database?\n\nEveryone will see it.`)) return;
-
     const newId = generateId();
     const sharedCopy = {
-      id: newId,
-      type: "shared",
-      name: project.name.replace(/ \(personal\)$/, ""),
+      id: newId, type: "shared", name: project.name.replace(/ \(personal\)$/, ""),
       people: project.people.slice(),
       history: project.history.map(w => w.map(g => g.slice())),
       lastGenerationStart: project.lastGenerationStart,
       lastGenerationCount: project.lastGenerationCount
     };
-
     projects[newId] = sharedCopy;
     saveSharedProject(sharedCopy);
-
-    // Remove personal copy
     const all = loadPersonalProjects();
     delete all[project.id];
     savePersonalProjects(all);
     delete projects[project.id];
-
     activeProjectId = newId;
     saveActiveProjectId(newId);
     renderProjectBar();
@@ -409,12 +320,11 @@ function convertActiveProject() {
   }
 }
 
-// ====== Render project bar ======
+// ====== Project bar ======
 function renderProjectBar() {
   const select = document.getElementById("project-select");
   const badge = document.getElementById("project-type-badge");
 
-  // Sort: shared first (alphabetical), then personal (alphabetical)
   const list = Object.values(projects).sort((a, b) => {
     if (a.type !== b.type) return a.type === "shared" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -439,10 +349,8 @@ function renderProjectBar() {
   }
 }
 
-// ====== Current project data access ======
-function currentProject() {
-  return projects[activeProjectId];
-}
+// ====== Current project ======
+function currentProject() { return projects[activeProjectId]; }
 
 function refreshCurrentProjectView() {
   renderPeople();
@@ -452,9 +360,7 @@ function refreshCurrentProjectView() {
 }
 
 // ====== Core Algorithm ======
-function getPairKey(a, b) {
-  return [a, b].sort().join("|||");
-}
+function getPairKey(a, b) { return [a, b].sort().join("|||"); }
 
 function getPairCountsFromHistory(history, weeksBack) {
   const counts = {};
@@ -495,52 +401,36 @@ function shuffle(arr) {
 
 function buildGroupsFromShuffle(shuffled, numGroups) {
   const groups = Array.from({ length: numGroups }, () => []);
-  shuffled.forEach((person, i) => {
-    groups[i % numGroups].push(person);
-  });
+  shuffled.forEach((person, i) => groups[i % numGroups].push(person));
   return groups;
 }
 
 function improveWithSwaps(groups, pairCounts, iterations = 800) {
   const g = groups.map(x => x.slice());
   if (g.length < 2) return g;
-
   for (let it = 0; it < iterations; it++) {
     const i1 = Math.floor(Math.random() * g.length);
     let i2 = Math.floor(Math.random() * g.length);
     if (i1 === i2) continue;
-
-    const g1 = g[i1];
-    const g2 = g[i2];
+    const g1 = g[i1], g2 = g[i2];
     if (!g1.length || !g2.length) continue;
-
     const p1Idx = Math.floor(Math.random() * g1.length);
     const p2Idx = Math.floor(Math.random() * g2.length);
-    const p1 = g1[p1Idx];
-    const p2 = g2[p2Idx];
-
+    const p1 = g1[p1Idx], p2 = g2[p2Idx];
     const before = groupScore(g1, pairCounts) + groupScore(g2, pairCounts);
-    g1[p1Idx] = p2;
-    g2[p2Idx] = p1;
+    g1[p1Idx] = p2; g2[p2Idx] = p1;
     const after = groupScore(g1, pairCounts) + groupScore(g2, pairCounts);
-
-    if (after > before) {
-      g1[p1Idx] = p1;
-      g2[p2Idx] = p2;
-    }
+    if (after > before) { g1[p1Idx] = p1; g2[p2Idx] = p2; }
   }
   return g;
 }
 
 function createGroups(people, numGroups, pairCounts, attempts = 1500) {
   if (people.length < 2) throw new Error("Need at least 2 people.");
-  if (numGroups < 2 || numGroups > people.length) {
+  if (numGroups < 2 || numGroups > people.length)
     throw new Error(`Number of groups must be between 2 and ${people.length}.`);
-  }
 
-  let bestGroups = null;
-  let bestScore = Infinity;
-
+  let bestGroups = null, bestScore = Infinity;
   for (let a = 0; a < attempts; a++) {
     const shuffled = shuffle(people);
     const groups = buildGroupsFromShuffle(shuffled, numGroups);
@@ -551,7 +441,6 @@ function createGroups(people, numGroups, pairCounts, attempts = 1500) {
       if (bestScore === 0) break;
     }
   }
-
   bestGroups = improveWithSwaps(bestGroups, pairCounts);
   return bestGroups;
 }
@@ -559,7 +448,6 @@ function createGroups(people, numGroups, pairCounts, attempts = 1500) {
 function generateWeeksForProject(project, numWeeks, numGroups, weeksBack) {
   const allWeeks = [];
   const pairCounts = getPairCountsFromHistory(project.history, weeksBack);
-
   for (let w = 0; w < numWeeks; w++) {
     const groups = createGroups(project.people, numGroups, pairCounts);
     for (const group of groups) {
@@ -575,7 +463,7 @@ function generateWeeksForProject(project, numWeeks, numGroups, weeksBack) {
   return allWeeks;
 }
 
-// ====== CSV Utilities ======
+// ====== CSV ======
 function csvEscape(value) {
   const s = String(value == null ? "" : value);
   if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -609,31 +497,15 @@ function safeFilename(s) {
 }
 
 function parseCSV(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-  let i = 0;
+  const rows = []; let row = []; let field = ""; let inQuotes = false; let i = 0;
   text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
   while (i < text.length) {
     const ch = text[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        } else {
-          inQuotes = false;
-          i++;
-          continue;
-        }
-      } else {
-        field += ch;
-        i++;
-        continue;
-      }
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        else { inQuotes = false; i++; continue; }
+      } else { field += ch; i++; continue; }
     } else {
       if (ch === '"') { inQuotes = true; i++; continue; }
       if (ch === ",") { row.push(field); field = ""; i++; continue; }
@@ -645,28 +517,19 @@ function parseCSV(text) {
   return rows.filter(r => r.some(c => c.trim() !== ""));
 }
 
-// ====== CSV Export ======
 function maxGroupSize(weeks) {
   let max = 0;
-  for (const week of weeks) {
-    for (const group of week) {
-      if (group.length > max) max = group.length;
-    }
-  }
+  for (const week of weeks) for (const group of week) if (group.length > max) max = group.length;
   return max;
 }
 
 function exportGroupingsCSV(weeks, label) {
-  if (!weeks || !weeks.length) {
-    alert("Nothing to export.");
-    return;
-  }
+  if (!weeks || !weeks.length) { alert("Nothing to export."); return; }
   const cols = maxGroupSize(weeks);
   const includeWeekCol = weeks.length > 1;
   const header = includeWeekCol ? ["Week", "Group"] : ["Group"];
   for (let i = 1; i <= cols; i++) header.push(`Person ${i}`);
   const rows = [header];
-
   weeks.forEach((week, wIdx) => {
     week.forEach((group, gIdx) => {
       const sorted = group.slice().sort((a, b) => a.localeCompare(b));
@@ -675,7 +538,6 @@ function exportGroupingsCSV(weeks, label) {
       rows.push(row);
     });
   });
-
   const csv = rowsToCSV(rows);
   downloadFile(csv, `${label}_${timestampForFilename()}.csv`, "text/csv;charset=utf-8");
 }
@@ -689,50 +551,37 @@ function exportPeopleCSV() {
   downloadFile(csv, `people_${safeFilename(p.name)}_${timestampForFilename()}.csv`, "text/csv;charset=utf-8");
 }
 
-// ====== CSV Import: People ======
 function importPeopleCSV(text) {
   const p = currentProject();
   if (!p) return;
-
   const rows = parseCSV(text);
   if (!rows.length) { alert("CSV file is empty."); return; }
-
   const firstRow = rows[0].map(c => c.trim().toLowerCase());
   const hasHeader = firstRow.some(c => c === "name" || c === "person" || c === "people");
   const dataRows = hasHeader ? rows.slice(1) : rows;
-
   const names = [];
-  for (const row of dataRows) {
-    for (const cell of row) {
-      const trimmed = cell.trim();
-      if (trimmed) names.push(trimmed);
-    }
+  for (const row of dataRows) for (const cell of row) {
+    const trimmed = cell.trim();
+    if (trimmed) names.push(trimmed);
   }
-
   let added = 0;
-  for (const name of names) {
-    if (!p.people.includes(name)) { p.people.push(name); added++; }
-  }
-
+  for (const name of names) if (!p.people.includes(name)) { p.people.push(name); added++; }
   saveCurrentProject();
   refreshCurrentProjectView();
   showNotification(`Imported ${added} new name${added === 1 ? "" : "s"} (${names.length - added} duplicate${names.length - added === 1 ? "" : "s"} skipped).`);
 }
 
-// ====== Render People ======
+// ====== Rendering ======
 function renderPeople() {
   const list = document.getElementById("people-list");
   const count = document.getElementById("people-count");
   const p = currentProject();
   if (!p) return;
-
   count.textContent = p.people.length;
-
   if (!p.people.length) {
     list.innerHTML = '<li class="empty">No people yet. Add some above.</li>';
     return;
   }
-
   list.innerHTML = "";
   p.people.slice().sort((a, b) => a.localeCompare(b)).forEach(name => {
     const li = document.createElement("li");
@@ -760,7 +609,6 @@ function updateGroupInputMax() {
   input.max = Math.max(2, maxPeople);
 }
 
-// ====== Render Groups ======
 function renderGroupsHTML(groups, weekLabel) {
   const wrap = document.createElement("div");
   if (weekLabel) {
@@ -770,7 +618,6 @@ function renderGroupsHTML(groups, weekLabel) {
   }
   const grid = document.createElement("div");
   grid.className = "groups";
-
   groups.forEach((group, i) => {
     const box = document.createElement("div");
     box.className = "group-box";
@@ -786,7 +633,6 @@ function renderGroupsHTML(groups, weekLabel) {
     box.appendChild(ul);
     grid.appendChild(box);
   });
-
   wrap.appendChild(grid);
   return wrap;
 }
@@ -816,73 +662,59 @@ function renderPreview(weeks, isMultiWeek) {
     output.appendChild(renderGroupsHTML(weeks[0], ""));
   }
   saveRow.classList.remove("hidden");
-
   area.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// ====== Render Stats ======
 function renderStats() {
   const el = document.getElementById("stats-output");
   const p = currentProject();
   if (!p) return;
-
   el.innerHTML = "";
-
   if (!p.history.length) {
     el.innerHTML = '<p class="empty">No history yet.</p>';
     return;
   }
-
   const pairCounts = getPairCountsFromHistory(p.history, null);
   const entries = Object.entries(pairCounts);
   const repeats = entries.filter(([, c]) => c > 1);
-
   const rows = [
     ["Total unique pairs", entries.length],
     ["Pairs seen more than once", repeats.length],
     ["Total weeks recorded", p.history.length]
   ];
-
   rows.forEach(([label, value]) => {
     const div = document.createElement("div");
     div.className = "stat-row";
     div.innerHTML = `<span class="stat-label">${label}</span><span class="stat-value">${value}</span>`;
     el.appendChild(div);
   });
-
   if (repeats.length) {
     const pairDiv = document.createElement("div");
     pairDiv.className = "pair-list";
     const h = document.createElement("h3");
     h.textContent = "Most frequent pairings";
     pairDiv.appendChild(h);
-
     repeats.sort((a, b) => b[1] - a[1]).slice(0, 10).forEach(([key, count]) => {
       const [a, b] = key.split("|||");
       const row = document.createElement("div");
       row.textContent = `${a} & ${b} — ${count} times`;
       pairDiv.appendChild(row);
     });
-
     el.appendChild(pairDiv);
   }
 }
 
-// ====== Render History ======
 function renderHistory() {
   const el = document.getElementById("history-output");
   const count = document.getElementById("history-count");
   const p = currentProject();
   if (!p) return;
-
   count.textContent = p.history.length;
   el.innerHTML = "";
-
   if (!p.history.length) {
     el.innerHTML = '<p class="empty">No history yet. Generate and save weeks to build history.</p>';
     return;
   }
-
   for (let i = p.history.length - 1; i >= 0; i--) {
     const week = p.history[i];
     const block = document.createElement("div");
@@ -892,37 +724,123 @@ function renderHistory() {
   }
 }
 
-function refreshAll() {
-  renderProjectBar();
-  refreshCurrentProjectView();
+// ====== Tutorial ======
+const TUTORIAL_STEPS = [
+  {
+    title: "Welcome to Group Randomizer",
+    text: "This quick tour shows you how to use the app. You can skip anytime and re-open it from the Help button at the top.",
+    target: null
+  },
+  {
+    title: "Projects",
+    text: "Each project has its own people and history. Use this dropdown to switch. Create a new project with the buttons below.",
+    target: ".project-bar"
+  },
+  {
+    title: "Shared vs Personal",
+    text: "When you create a project, choose Shared (visible to everyone via Firebase) or Personal (this browser only). The badge shows which type is active.",
+    target: "#project-type-badge"
+  },
+  {
+    title: "People tab",
+    text: "Add people here. Paste a whole list separated by commas or new lines. Import/Export CSV is also here.",
+    target: '[data-tab="people"]'
+  },
+  {
+    title: "Generate tab",
+    text: "Choose how many groups you want and how many weeks to generate. The app avoids repeating the same pairs across weeks.",
+    target: '[data-tab="generate"]'
+  },
+  {
+    title: "Preview vs Generate",
+    text: "Preview shows groups without saving. Generate & Save adds them to history so future weeks avoid these pairings.",
+    target: "#preview-btn"
+  },
+  {
+    title: "History tab",
+    text: "View past weeks (newest first) and export CSVs. Latest Generation exports just the most recent batch. All Weeks exports everything.",
+    target: '[data-tab="history"]'
+  },
+  {
+    title: "You're ready!",
+    text: "That's it. Start by adding people, then head to Generate. Click Help anytime to see this again.",
+    target: null
+  }
+];
+
+let tutorialStep = 0;
+
+function startTutorial() {
+  tutorialStep = 0;
+  document.getElementById("tutorial-overlay").classList.remove("hidden");
+  showTutorialStep();
+}
+
+function endTutorial() {
+  document.getElementById("tutorial-overlay").classList.add("hidden");
+  document.getElementById("tutorial-highlight").classList.add("hidden");
+  try { localStorage.setItem(LS_TUTORIAL_SEEN, "1"); } catch (e) {}
+}
+
+function showTutorialStep() {
+  const step = TUTORIAL_STEPS[tutorialStep];
+  const box = document.querySelector(".tutorial-box");
+  const highlight = document.getElementById("tutorial-highlight");
+
+  document.getElementById("tutorial-step").textContent =
+    `Step ${tutorialStep + 1} of ${TUTORIAL_STEPS.length}`;
+  document.getElementById("tutorial-title").textContent = step.title;
+  document.getElementById("tutorial-text").textContent = step.text;
+  document.getElementById("tutorial-back").disabled = tutorialStep === 0;
+  document.getElementById("tutorial-next").textContent =
+    tutorialStep === TUTORIAL_STEPS.length - 1 ? "Finish" : "Next";
+
+  // Highlight target if any
+  if (step.target) {
+    const el = document.querySelector(step.target);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const pad = 6;
+      highlight.style.top = (rect.top + window.scrollY - pad) + "px";
+      highlight.style.left = (rect.left + window.scrollX - pad) + "px";
+      highlight.style.width = (rect.width + pad * 2) + "px";
+      highlight.style.height = (rect.height + pad * 2) + "px";
+      highlight.classList.remove("hidden");
+
+      // Position box near target (below it if there's room)
+      const boxRect = box.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      let top;
+      if (spaceBelow > 220) top = rect.bottom + 20;
+      else top = Math.max(20, rect.top - 220);
+
+      box.style.position = "fixed";
+      box.style.top = top + "px";
+      box.style.left = "50%";
+      box.style.transform = "translateX(-50%)";
+    }
+  } else {
+    highlight.classList.add("hidden");
+    box.style.position = "fixed";
+    box.style.top = "50%";
+    box.style.left = "50%";
+    box.style.transform = "translate(-50%, -50%)";
+  }
 }
 
 // ====== Event Wiring ======
-document.addEventListener("DOMContentLoaded", async () => {
-  // Load any personal projects first so they show even before Firebase responds
+document.addEventListener("DOMContentLoaded", () => {
+  // Load personal projects synchronously
   const personal = loadPersonalProjects();
   for (const [id, p] of Object.entries(personal)) {
     projects[id] = {
-      id,
-      type: "personal",
+      id, type: "personal",
       name: p.name || "Untitled",
       people: p.people || [],
       history: p.history || [],
       lastGenerationStart: typeof p.lastGenerationStart === "number" ? p.lastGenerationStart : -1,
       lastGenerationCount: typeof p.lastGenerationCount === "number" ? p.lastGenerationCount : 0
     };
-  }
-
-  // Try to migrate legacy single-project data if it exists
-  if (!localStorage.getItem(LS_MIGRATED)) {
-    onValue(migrationRef, snapshot => {
-      const legacy = snapshot.val();
-      if (legacy && (legacy.people || legacy.history) && Object.keys(projects).filter(id => projects[id].type === "shared").length === 0) {
-        migrateLegacyDataIfPresent(legacy);
-      } else {
-        localStorage.setItem(LS_MIGRATED, "1");
-      }
-    }, { onlyOnce: true });
   }
 
   activeProjectId = loadActiveProjectId();
@@ -955,7 +873,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     createProject(name.trim(), type);
   });
 
-  // Rename
   document.getElementById("rename-project-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p) return;
@@ -964,15 +881,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     renameProject(newName.trim());
   });
 
-  // Convert
-  document.getElementById("convert-project-btn").addEventListener("click", () => {
-    convertActiveProject();
-  });
-
-  // Delete
-  document.getElementById("delete-project-btn").addEventListener("click", () => {
-    deleteActiveProject();
-  });
+  document.getElementById("convert-project-btn").addEventListener("click", convertActiveProject);
+  document.getElementById("delete-project-btn").addEventListener("click", deleteActiveProject);
 
   // Add people
   document.getElementById("add-btn").addEventListener("click", addPeopleFromInput);
@@ -986,7 +896,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!raw) return;
     const p = currentProject();
     if (!p) return;
-
     const names = raw.split(/[,\n]/).map(n => n.trim()).filter(Boolean);
     let added = 0;
     for (const name of names) {
@@ -999,7 +908,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     showNotification(`Added ${added} name${added === 1 ? "" : "s"}.`);
   }
 
-  // Clear people
   document.getElementById("clear-people-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !p.people.length) return;
@@ -1011,75 +919,58 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Preview
   document.getElementById("preview-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p) return;
     const numGroups = parseInt(document.getElementById("num-groups").value, 10);
     const wbRaw = document.getElementById("weeks-back").value.trim();
     const weeksBack = wbRaw ? parseInt(wbRaw, 10) : null;
-
     try {
       const pairCounts = getPairCountsFromHistory(p.history, weeksBack);
       const groups = createGroups(p.people, numGroups, pairCounts);
       renderPreview([groups], false);
-    } catch (e) {
-      alert(e.message);
-    }
+    } catch (e) { alert(e.message); }
   });
 
-  // Generate and save
   document.getElementById("generate-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p) return;
-
     const numGroups = parseInt(document.getElementById("num-groups").value, 10);
     const numWeeks = parseInt(document.getElementById("num-weeks").value, 10);
     const wbRaw = document.getElementById("weeks-back").value.trim();
     const weeksBack = wbRaw ? parseInt(wbRaw, 10) : null;
-
     if (!numWeeks || numWeeks < 1) { alert("Number of weeks must be at least 1."); return; }
-
     try {
       const weeks = generateWeeksForProject(p, numWeeks, numGroups, weeksBack);
       renderPreview(weeks.length === 1 ? [weeks[0]] : weeks, numWeeks > 1);
-
       p.lastGenerationStart = p.history.length;
       p.lastGenerationCount = weeks.length;
       p.history.push(...weeks);
-
       saveCurrentProject();
       renderStats();
       renderHistory();
       showNotification(`Saved ${numWeeks} week(s) to history.`);
-    } catch (e) {
-      alert(e.message);
-    }
+    } catch (e) { alert(e.message); }
   });
 
-  // Save preview manually
   document.getElementById("save-preview-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !currentPreviewWeeks) return;
-
     p.lastGenerationStart = p.history.length;
     p.lastGenerationCount = currentPreviewWeeks.length;
     p.history.push(...currentPreviewWeeks);
-
     saveCurrentProject();
     renderStats();
     renderHistory();
     showNotification(`Saved ${currentPreviewWeeks.length} week(s) to history.`);
   });
 
-  // Export preview CSV
   document.getElementById("export-preview-csv-btn").addEventListener("click", () => {
     if (!currentPreviewWeeks) return;
     const p = currentProject();
     exportGroupingsCSV(currentPreviewWeeks, `preview_${safeFilename(p ? p.name : "project")}`);
   });
 
-  // Clear history
   document.getElementById("clear-history-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !p.history.length) return;
@@ -1096,18 +987,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // People CSV export
   document.getElementById("export-people-csv-btn").addEventListener("click", exportPeopleCSV);
 
-  // Latest generation CSV
   document.getElementById("export-latest-csv-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !p.history.length) { alert("No history to export."); return; }
-
     const start = p.lastGenerationStart;
     const count = p.lastGenerationCount;
     const label = `latest_${safeFilename(p.name)}`;
-
     if (start >= 0 && count > 0 && start + count <= p.history.length) {
       exportGroupingsCSV(p.history.slice(start, start + count), label);
       return;
@@ -1115,14 +1002,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     exportGroupingsCSV([p.history[p.history.length - 1]], label);
   });
 
-  // All weeks CSV
   document.getElementById("export-all-csv-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !p.history.length) { alert("No history to export."); return; }
     exportGroupingsCSV(p.history, `all_${safeFilename(p.name)}`);
   });
 
-  // People CSV import
   document.getElementById("import-people-csv-btn").addEventListener("click", () => {
     document.getElementById("import-people-file").click();
   });
@@ -1132,16 +1017,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      try {
-        importPeopleCSV(ev.target.result);
-      } catch (err) {
-        alert("Failed to import CSV: " + err.message);
-      }
+      try { importPeopleCSV(ev.target.result); }
+      catch (err) { alert("Failed to import CSV: " + err.message); }
       e.target.value = "";
     };
     reader.readAsText(file);
   });
 
-  // Finally, connect to Firebase
+  // Tutorial
+  document.getElementById("help-btn").addEventListener("click", startTutorial);
+  document.getElementById("tutorial-skip").addEventListener("click", endTutorial);
+  document.getElementById("tutorial-back").addEventListener("click", () => {
+    if (tutorialStep > 0) { tutorialStep--; showTutorialStep(); }
+  });
+  document.getElementById("tutorial-next").addEventListener("click", () => {
+    if (tutorialStep < TUTORIAL_STEPS.length - 1) {
+      tutorialStep++;
+      showTutorialStep();
+    } else {
+      endTutorial();
+    }
+  });
+
+  // Show tutorial on first visit
+  if (!localStorage.getItem(LS_TUTORIAL_SEEN)) {
+    setTimeout(startTutorial, 600);
+  }
+
+  // Try to migrate legacy data
+  if (!localStorage.getItem(LS_MIGRATED)) {
+    onValue(migrationRef, snapshot => {
+      const legacy = snapshot.val();
+      if (legacy && (legacy.people || legacy.history)
+          && Object.keys(projects).filter(id => projects[id].type === "shared").length === 0) {
+        migrateLegacyDataIfPresent(legacy);
+      } else {
+        localStorage.setItem(LS_MIGRATED, "1");
+      }
+    }, { onlyOnce: true });
+  }
+
+  // Finally connect Firebase
   initFirebaseListeners();
 });
