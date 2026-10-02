@@ -14,6 +14,21 @@
     <p id="sync-status" class="subtitle">Connecting to shared database...</p>
   </header>
 
+  <!-- PROJECT BAR -->
+  <div class="project-bar">
+    <div class="project-bar-row">
+      <label for="project-select" class="project-label">Project</label>
+      <select id="project-select" class="project-select"></select>
+      <span id="project-type-badge" class="project-badge"></span>
+    </div>
+    <div class="project-bar-row project-bar-actions">
+      <button id="new-project-btn" class="secondary small">+ New</button>
+      <button id="rename-project-btn" class="secondary small">Rename</button>
+      <button id="convert-project-btn" class="secondary small">Convert</button>
+      <button id="delete-project-btn" class="danger small">Delete</button>
+    </div>
+  </div>
+
   <nav class="tabs">
     <button class="tab active" data-tab="people">People</button>
     <button class="tab" data-tab="generate">Generate</button>
