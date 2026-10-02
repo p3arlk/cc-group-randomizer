@@ -729,46 +729,71 @@ const TUTORIAL_STEPS = [
   {
     title: "Welcome to Group Randomizer",
     text: "This quick tour shows you how to use the app. You can skip anytime and re-open it from the Help button at the top.",
-    target: null
+    target: null,
+    tab: null
   },
   {
     title: "Projects",
-    text: "Each project has its own people and history. Use this dropdown to switch. Create a new project with the buttons below.",
-    target: ".project-bar"
+    text: "Each project has its own people and history. Use this dropdown to switch projects. Create a new one with the + New button.",
+    target: "#project-select",
+    tab: null
   },
   {
     title: "Shared vs Personal",
-    text: "When you create a project, choose Shared (visible to everyone via Firebase) or Personal (this browser only). The badge shows which type is active.",
-    target: "#project-type-badge"
+    text: "When you create a project, choose Shared (everyone with the link sees it) or Personal (only on this browser). This badge shows the current type.",
+    target: "#project-type-badge",
+    tab: null
+  },
+  {
+    title: "Project actions",
+    text: "Use these buttons to create, rename, convert between shared/personal, or delete the current project.",
+    target: "#new-project-btn",
+    tab: null
   },
   {
     title: "People tab",
     text: "Add people here. Paste a whole list separated by commas or new lines. Import/Export CSV is also here.",
-    target: '[data-tab="people"]'
+    target: "#add-input",
+    tab: "people"
   },
   {
     title: "Generate tab",
     text: "Choose how many groups you want and how many weeks to generate. The app avoids repeating the same pairs across weeks.",
-    target: '[data-tab="generate"]'
+    target: "#num-groups",
+    tab: "generate"
   },
   {
-    title: "Preview vs Generate",
-    text: "Preview shows groups without saving. Generate & Save adds them to history so future weeks avoid these pairings.",
-    target: "#preview-btn"
+    title: "Preview vs Generate & Save",
+    text: "Preview shows groups without saving them. Generate & Save adds them to history so future weeks avoid these pairings.",
+    target: "#generate-btn",
+    tab: "generate"
   },
   {
     title: "History tab",
-    text: "View past weeks (newest first) and export CSVs. Latest Generation exports just the most recent batch. All Weeks exports everything.",
-    target: '[data-tab="history"]'
+    text: "View past weeks (newest at the top) and export as CSV. Latest Generation exports just the most recent batch; All Weeks exports everything.",
+    target: "#export-latest-csv-btn",
+    tab: "history"
   },
   {
     title: "You're ready!",
-    text: "That's it. Start by adding people, then head to Generate. Click Help anytime to see this again.",
-    target: null
+    text: "That's it. Start by adding people, then head to Generate. Click Help at the top anytime to see this again.",
+    target: null,
+    tab: null
   }
 ];
 
 let tutorialStep = 0;
+
+// Switch active tab (used by tutorial to make target visible)
+function switchTab(tabName) {
+  if (!tabName) return;
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+  const tabBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
+  const tabContent = document.getElementById(`tab-${tabName}`);
+  if (tabBtn) tabBtn.classList.add("active");
+  if (tabContent) tabContent.classList.add("active");
+}
 
 function startTutorial() {
   tutorialStep = 0;
@@ -795,37 +820,52 @@ function showTutorialStep() {
   document.getElementById("tutorial-next").textContent =
     tutorialStep === TUTORIAL_STEPS.length - 1 ? "Finish" : "Next";
 
-  // Highlight target if any
-  if (step.target) {
-    const el = document.querySelector(step.target);
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      const pad = 6;
-      highlight.style.top = (rect.top + window.scrollY - pad) + "px";
-      highlight.style.left = (rect.left + window.scrollX - pad) + "px";
-      highlight.style.width = (rect.width + pad * 2) + "px";
-      highlight.style.height = (rect.height + pad * 2) + "px";
-      highlight.classList.remove("hidden");
-
-      // Position box near target (below it if there's room)
-      const boxRect = box.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      let top;
-      if (spaceBelow > 220) top = rect.bottom + 20;
-      else top = Math.max(20, rect.top - 220);
-
-      box.style.position = "fixed";
-      box.style.top = top + "px";
-      box.style.left = "50%";
-      box.style.transform = "translateX(-50%)";
-    }
-  } else {
-    highlight.classList.add("hidden");
-    box.style.position = "fixed";
-    box.style.top = "50%";
-    box.style.left = "50%";
-    box.style.transform = "translate(-50%, -50%)";
+  // Switch tab first so the target is actually visible
+  if (step.tab) {
+    switchTab(step.tab);
   }
+
+  // Wait a tick for the DOM to lay out the newly visible tab,
+  // then position the highlight and popup.
+  requestAnimationFrame(() => {
+    if (step.target) {
+      const el = document.querySelector(step.target);
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const pad = 6;
+
+        highlight.style.top = (rect.top + window.scrollY - pad) + "px";
+        highlight.style.left = (rect.left + window.scrollX - pad) + "px";
+        highlight.style.width = (rect.width + pad * 2) + "px";
+        highlight.style.height = (rect.height + pad * 2) + "px";
+        highlight.classList.remove("hidden");
+
+        // Place the popup below the target if there's room, otherwise above it
+        const spaceBelow = window.innerHeight - rect.bottom;
+        let top;
+        if (spaceBelow > 220) top = rect.bottom + 20;
+        else top = Math.max(20, rect.top - 220);
+
+        box.style.position = "fixed";
+        box.style.top = top + "px";
+        box.style.left = "50%";
+        box.style.transform = "translateX(-50%)";
+      } else {
+        // Target not found — just center the box
+        highlight.classList.add("hidden");
+        box.style.position = "fixed";
+        box.style.top = "50%";
+        box.style.left = "50%";
+        box.style.transform = "translate(-50%, -50%)";
+      }
+    } else {
+      highlight.classList.add("hidden");
+      box.style.position = "fixed";
+      box.style.top = "50%";
+      box.style.left = "50%";
+      box.style.transform = "translate(-50%, -50%)";
+    }
+  });
 }
 
 // ====== Event Wiring ======
