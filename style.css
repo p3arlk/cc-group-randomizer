@@ -33,6 +33,22 @@ header h1 {
   margin-top: 4px;
 }
 
+/* ---- Header with help button ---- */
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  position: relative;
+}
+
+.header-top button {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 /* ---- Project bar ---- */
 .project-bar {
   background: #fff;
@@ -98,6 +114,7 @@ header h1 {
   justify-content: flex-end;
 }
 
+/* ---- Tabs ---- */
 .tabs {
   display: flex;
   gap: 4px;
@@ -139,6 +156,7 @@ header h1 {
   display: block;
 }
 
+/* ---- Cards ---- */
 .card {
   background: #fff;
   border-radius: 12px;
@@ -171,6 +189,7 @@ header h1 {
   margin-top: 8px;
 }
 
+/* ---- Inputs and buttons ---- */
 .input-row {
   display: flex;
   gap: 8px;
@@ -250,6 +269,7 @@ button.small {
   font-weight: 500;
 }
 
+/* ---- People list ---- */
 .people-list {
   list-style: none;
   display: flex;
@@ -293,6 +313,7 @@ button.small {
   padding: 8px 0;
 }
 
+/* ---- Groups ---- */
 .groups {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -340,6 +361,7 @@ button.small {
   margin-bottom: 10px;
 }
 
+/* ---- Stats ---- */
 .stat-row {
   display: flex;
   justify-content: space-between;
@@ -378,6 +400,7 @@ button.small {
   padding: 4px 0;
 }
 
+/* ---- Utilities ---- */
 .hidden {
   display: none !important;
 }
@@ -400,4 +423,121 @@ button.small {
 
 .notification.show {
   opacity: 1;
+}
+
+/* ---- Tutorial overlay ---- */
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.tutorial-overlay.hidden {
+  display: none;
+}
+
+.tutorial-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  pointer-events: auto;
+}
+
+.tutorial-highlight {
+  position: absolute;
+  border: 3px solid #fbbf24;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
+  transition: all 0.25s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tutorial-highlight.hidden {
+  display: none;
+}
+
+.tutorial-box {
+  position: fixed;
+  z-index: 2;
+  width: 340px;
+  max-width: calc(100vw - 40px);
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  pointer-events: auto;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tutorial-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #888;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tutorial-skip {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #888;
+  padding: 0;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.tutorial-skip:hover {
+  background: #f0f2f5;
+  color: #b91c1c;
+}
+
+.tutorial-box h3 {
+  margin-top: 10px;
+  font-size: 17px;
+  color: #1a2b4a;
+}
+
+.tutorial-box p {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #444;
+  line-height: 1.5;
+}
+
+.tutorial-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.tutorial-footer button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Small screen adjustments ---- */
+@media (max-width: 500px) {
+  .header-top {
+    flex-direction: column;
+  }
+  .header-top button {
+    position: static;
+    transform: none;
+    margin-top: 6px;
+  }
+  .tutorial-box {
+    width: calc(100vw - 24px);
+  }
 }
