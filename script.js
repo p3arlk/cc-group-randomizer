@@ -92,11 +92,9 @@ function initFirebaseListeners() {
     const data = snapshot.val() || {};
     const merged = {};
 
-    // Personal first
     for (const [id, p] of Object.entries(projects)) {
       if (p.type === "personal") merged[id] = p;
     }
-    // Then shared from Firebase
     for (const [id, p] of Object.entries(data)) {
       merged[id] = {
         id,
@@ -108,7 +106,6 @@ function initFirebaseListeners() {
         lastGenerationCount: typeof p.lastGenerationCount === "number" ? p.lastGenerationCount : 0
       };
     }
-    // Also merge in personal from localStorage
     const personal = loadPersonalProjects();
     for (const [id, p] of Object.entries(personal)) {
       merged[id] = {
@@ -650,7 +647,7 @@ function renderPreview(weeks, isMultiWeek) {
   area.classList.remove("hidden");
 
   if (isMultiWeek) {
-    title.textContent = `Generated ${weeks.length} week(s)`;
+    title.textContent = `Generated ${weeks.length} week(s) — not saved yet`;
     weeks.forEach((w, i) => {
       const block = document.createElement("div");
       block.className = "week-block";
@@ -658,7 +655,7 @@ function renderPreview(weeks, isMultiWeek) {
       output.appendChild(block);
     });
   } else {
-    title.textContent = "Preview";
+    title.textContent = "Generated Groups — not saved yet";
     output.appendChild(renderGroupsHTML(weeks[0], ""));
   }
   saveRow.classList.remove("hidden");
@@ -758,14 +755,14 @@ const TUTORIAL_STEPS = [
   },
   {
     title: "Generate tab",
-    text: "Choose how many groups you want and how many weeks to generate. The app avoids repeating the same pairs across weeks.",
+    text: "Set how many groups you want and how many weeks to generate. The app avoids repeating the same pairs across weeks.",
     target: "#num-groups",
     tab: "generate"
   },
   {
-    title: "Preview vs Generate & Save",
-    text: "Preview shows groups without saving them. Generate & Save adds them to history so future weeks avoid these pairings.",
-    target: "#generate-btn",
+    title: "Generate, then Save",
+    text: "Click Generate Groups to see the random groupings. If you like them, click Save to History in the preview. Nothing is saved until you click Save.",
+    target: "#preview-btn",
     tab: "generate"
   },
   {
@@ -784,7 +781,6 @@ const TUTORIAL_STEPS = [
 
 let tutorialStep = 0;
 
-// Switch active tab (used by tutorial to make target visible)
 function switchTab(tabName) {
   if (!tabName) return;
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
@@ -820,27 +816,20 @@ function showTutorialStep() {
   document.getElementById("tutorial-next").textContent =
     tutorialStep === TUTORIAL_STEPS.length - 1 ? "Finish" : "Next";
 
-  // Switch tab first so the target is actually visible
-  if (step.tab) {
-    switchTab(step.tab);
-  }
+  if (step.tab) switchTab(step.tab);
 
-  // Wait a tick for the DOM to lay out the newly visible tab,
-  // then position the highlight and popup.
   requestAnimationFrame(() => {
     if (step.target) {
       const el = document.querySelector(step.target);
       if (el) {
         const rect = el.getBoundingClientRect();
         const pad = 6;
-
         highlight.style.top = (rect.top + window.scrollY - pad) + "px";
         highlight.style.left = (rect.left + window.scrollX - pad) + "px";
         highlight.style.width = (rect.width + pad * 2) + "px";
         highlight.style.height = (rect.height + pad * 2) + "px";
         highlight.classList.remove("hidden");
 
-        // Place the popup below the target if there's room, otherwise above it
         const spaceBelow = window.innerHeight - rect.bottom;
         let top;
         if (spaceBelow > 220) top = rect.bottom + 20;
@@ -851,7 +840,6 @@ function showTutorialStep() {
         box.style.left = "50%";
         box.style.transform = "translateX(-50%)";
       } else {
-        // Target not found — just center the box
         highlight.classList.add("hidden");
         box.style.position = "fixed";
         box.style.top = "50%";
@@ -959,40 +947,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Generate Groups (replaces Preview)
   document.getElementById("preview-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p) return;
     const numGroups = parseInt(document.getElementById("num-groups").value, 10);
+    const numWeeks = parseInt(document.getElementById("num-weeks").value, 10) || 1;
     const wbRaw = document.getElementById("weeks-back").value.trim();
     const weeksBack = wbRaw ? parseInt(wbRaw, 10) : null;
-    try {
-      const pairCounts = getPairCountsFromHistory(p.history, weeksBack);
-      const groups = createGroups(p.people, numGroups, pairCounts);
-      renderPreview([groups], false);
-    } catch (e) { alert(e.message); }
-  });
-
-  document.getElementById("generate-btn").addEventListener("click", () => {
-    const p = currentProject();
-    if (!p) return;
-    const numGroups = parseInt(document.getElementById("num-groups").value, 10);
-    const numWeeks = parseInt(document.getElementById("num-weeks").value, 10);
-    const wbRaw = document.getElementById("weeks-back").value.trim();
-    const weeksBack = wbRaw ? parseInt(wbRaw, 10) : null;
-    if (!numWeeks || numWeeks < 1) { alert("Number of weeks must be at least 1."); return; }
     try {
       const weeks = generateWeeksForProject(p, numWeeks, numGroups, weeksBack);
-      renderPreview(weeks.length === 1 ? [weeks[0]] : weeks, numWeeks > 1);
-      p.lastGenerationStart = p.history.length;
-      p.lastGenerationCount = weeks.length;
-      p.history.push(...weeks);
-      saveCurrentProject();
-      renderStats();
-      renderHistory();
-      showNotification(`Saved ${numWeeks} week(s) to history.`);
+      renderPreview(weeks, numWeeks > 1);
     } catch (e) { alert(e.message); }
   });
 
+  // Save to History (from preview)
   document.getElementById("save-preview-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !currentPreviewWeeks) return;
@@ -1005,12 +974,14 @@ document.addEventListener("DOMContentLoaded", () => {
     showNotification(`Saved ${currentPreviewWeeks.length} week(s) to history.`);
   });
 
+  // Export Preview CSV
   document.getElementById("export-preview-csv-btn").addEventListener("click", () => {
     if (!currentPreviewWeeks) return;
     const p = currentProject();
     exportGroupingsCSV(currentPreviewWeeks, `preview_${safeFilename(p ? p.name : "project")}`);
   });
 
+  // Clear history
   document.getElementById("clear-history-btn").addEventListener("click", () => {
     const p = currentProject();
     if (!p || !p.history.length) return;
@@ -1027,6 +998,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // CSV exports
   document.getElementById("export-people-csv-btn").addEventListener("click", exportPeopleCSV);
 
   document.getElementById("export-latest-csv-btn").addEventListener("click", () => {
@@ -1048,6 +1020,7 @@ document.addEventListener("DOMContentLoaded", () => {
     exportGroupingsCSV(p.history, `all_${safeFilename(p.name)}`);
   });
 
+  // CSV import people
   document.getElementById("import-people-csv-btn").addEventListener("click", () => {
     document.getElementById("import-people-file").click();
   });
@@ -1084,7 +1057,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(startTutorial, 600);
   }
 
-  // Try to migrate legacy data
+  // Migrate legacy data if present
   if (!localStorage.getItem(LS_MIGRATED)) {
     onValue(migrationRef, snapshot => {
       const legacy = snapshot.val();
@@ -1097,6 +1070,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }, { onlyOnce: true });
   }
 
-  // Finally connect Firebase
+  // Connect Firebase
   initFirebaseListeners();
 });
