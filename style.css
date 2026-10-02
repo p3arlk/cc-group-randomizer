@@ -226,6 +226,15 @@ button:hover {
   opacity: 0.88;
 }
 
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button:disabled:hover {
+  opacity: 0.4;
+}
+
 button.primary {
   background: #1a2b4a;
   color: #fff;
